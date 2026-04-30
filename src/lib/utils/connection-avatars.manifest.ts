@@ -1,5 +1,4 @@
 export const CONNECTION_AVATAR_FILES = [
-	"ai302-color.svg",
 	"anthropic.svg",
 	"antigravity-color.svg",
 	"claude-color.svg",
@@ -18,11 +17,9 @@ export const CONNECTION_AVATAR_FILES = [
 	"openclaw-color.svg",
 	"openrouter.svg",
 	"openwebui.svg",
-	"qiniu-color.svg",
 	"qwen-color.svg",
 	"siliconcloud-color.svg",
 	"spark-color.svg",
-	"UQ3YrIrF59JZfaEFGJabrr (1).png",
 	"xai.svg"
 ] as const;
 

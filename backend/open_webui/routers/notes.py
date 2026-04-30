@@ -26,14 +26,33 @@ router = APIRouter()
 
 
 @router.get("/", response_model=list[NoteModel])
-async def get_notes(request: Request, user=Depends(get_verified_user)):
-    """List all notes visible to the current user, with content truncated at DB level."""
+async def get_notes(
+    request: Request,
+    user=Depends(get_verified_user),
+    preview_length: int = 10000,
+):
+    """List all notes visible to the current user, with content truncated at DB level.
+
+    The ``preview_length`` query parameter controls how many characters of
+    each note's content are returned (default 500, max 10000, 0 = full).
+    """
+    # Clamp to a sane range; 0 means "return full content"
+    if preview_length < 0:
+        preview_length = 500
+    elif preview_length > 10000:
+        preview_length = 10000
+
+    if preview_length == 0:
+        all_notes = Notes.get_notes()
+    else:
+        all_notes = Notes.get_notes_preview(preview_length=preview_length)
+
     if user.role == "admin":
-        notes = Notes.get_notes_preview()
+        notes = all_notes
     else:
         notes = [
             n
-            for n in Notes.get_notes_preview()
+            for n in all_notes
             if n.user_id == user.id
             or has_access(user.id, "read", n.access_control)
         ]

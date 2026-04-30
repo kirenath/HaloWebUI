@@ -92,7 +92,7 @@ class NotesTable:
             )
             return [NoteModel.model_validate(n) for n in notes]
 
-    def get_notes_preview(self, preview_length: int = 200) -> list[NoteModel]:
+    def get_notes_preview(self, preview_length: int = 10000) -> list[NoteModel]:
         """List notes with content truncated at DB level (avoids loading full content)."""
         with get_db() as db:
             rows = (

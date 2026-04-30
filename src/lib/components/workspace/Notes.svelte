@@ -2,7 +2,7 @@
 	import { toast } from 'svelte-sonner';
 	import { onMount, onDestroy, getContext } from 'svelte';
 	import { user, models, socket } from '$lib/stores';
-	import { getNotes, createNewNote, updateNoteById, deleteNoteById } from '$lib/apis/notes';
+	import { getNotes, getNoteById, createNewNote, updateNoteById, deleteNoteById } from '$lib/apis/notes';
 	import { generateTitle } from '$lib/apis';
 	import { uploadFile } from '$lib/apis/files';
 	import { WEBUI_API_BASE_URL } from '$lib/constants';
@@ -245,12 +245,24 @@
 		showEditor = true;
 	};
 
-	const openEditModal = (note: any) => {
+	const openEditModal = async (note: any) => {
 		editingNote = note;
 		noteForm = { title: note.title, content: note.content, meta: note.meta || {} };
 		resetHistory();
 		showEditor = true;
 		joinNoteRoom(note.id);
+
+		// Fetch full note content (list API returns truncated preview)
+		try {
+			const fullNote = await getNoteById(localStorage.token, note.id);
+			if (fullNote) {
+				editingNote = fullNote;
+				noteForm = { title: fullNote.title, content: fullNote.content, meta: fullNote.meta || {} };
+				resetHistory();
+			}
+		} catch (err) {
+			console.error('Failed to load full note:', err);
+		}
 	};
 
 	const saveNote = async () => {
@@ -577,7 +589,7 @@
 							class="text-xs text-gray-500 dark:text-gray-400 truncate mt-0.5 max-w-[400px]"
 							dir="auto"
 						>
-							{note.content.slice(0, 200)}
+							{note.content.slice(0, 2000)}
 						</div>
 					{/if}
 					<div class="flex items-center gap-2 mt-1">
