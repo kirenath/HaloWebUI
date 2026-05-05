@@ -16,6 +16,7 @@
 	import { getTools } from '$lib/apis/tools';
 	import { getBanners } from '$lib/apis/configs';
 	import { getUserSettings } from '$lib/apis/users';
+	import { getTheme } from '$lib/apis/themes';
 
 	import { WEBUI_VERSION } from '$lib/constants';
 	import { compareVersion } from '$lib/utils';
@@ -49,8 +50,23 @@
 	import { get } from 'svelte/store';
 	import Spinner from '$lib/components/common/Spinner.svelte';
 	import { applyUserSettingsSnapshot } from '$lib/utils/user-settings';
+	import { applyCustomTheme, clearCustomTheme } from '$lib/utils/theme-runtime';
 
 	const i18n = getContext('i18n');
+
+	const syncActiveCustomTheme = async (userSettings: any) => {
+		const activeThemeId = userSettings?.ui?.customTheme?.activeId;
+		if (!activeThemeId) {
+			clearCustomTheme();
+			return;
+		}
+
+		try {
+			applyCustomTheme(await getTheme(localStorage.token, activeThemeId));
+		} catch (error) {
+			console.error('Failed to sync custom theme', error);
+		}
+	};
 
 	let loaded = false;
 	let DB = null;
@@ -127,9 +143,11 @@
 
 			if (userSettings) {
 				applyUserSettingsSnapshot(userSettings, {});
+				await syncActiveCustomTheme(userSettings);
 			} else {
 				settings.set({});
 				settingsRevision.set(0);
+				clearCustomTheme();
 			}
 
 			banners.set(bannersData);

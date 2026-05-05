@@ -27,6 +27,7 @@
 	import ChevronDown from '$lib/components/icons/ChevronDown.svelte';
 	import HaloSelect from '$lib/components/common/HaloSelect.svelte';
 	import ThemeSelector from '$lib/components/common/ThemeSelector.svelte';
+	import CustomThemeManager from '$lib/components/settings/CustomThemeManager.svelte';
 	import ManageModal from '$lib/components/chat/Settings/Personalization/ManageModal.svelte';
 	import Textarea from '$lib/components/common/Textarea.svelte';
 	import Tooltip from '$lib/components/common/Tooltip.svelte';
@@ -57,6 +58,12 @@
 		getNativeWebSearchAvailabilityNote,
 		summarizeNativeWebSearchSupport
 	} from '$lib/utils/native-web-search';
+	import {
+		CUSTOM_THEME_ACTIVE_ID_KEY,
+		applyBuiltinTheme,
+		normalizeTheme,
+		type CustomTheme
+	} from '$lib/utils/theme-runtime';
 
 	const dispatch = createEventDispatcher();
 	const i18n: Writable<any> = getContext('i18n');
@@ -80,17 +87,10 @@
 	let modelsLoadError: string | null = null;
 
 	// Appearance
-	// Only expose system/dark/light in the UI, but keep legacy theme classes here so we can
-	// reliably clean them up for users upgrading from older versions.
-	const normalizeTheme = (rawTheme: string | null | undefined) => {
-		if (rawTheme === 'system' || rawTheme === 'dark' || rawTheme === 'light') return rawTheme;
-		if (rawTheme === 'oled-dark' || rawTheme === 'her' || rawTheme === 'rose-pine dark')
-			return 'dark';
-		if (rawTheme === 'rose-pine-dawn light') return 'light';
-		return 'system';
-	};
-	let themes = ['dark', 'light', 'her', 'rose-pine dark', 'rose-pine-dawn light', 'oled-dark'];
 	let selectedTheme = 'system';
+	let customThemeActiveId: string | null = null;
+	let customThemeDirty = false;
+	let customThemeManager: any = null;
 	let highlighterTheme = DEFAULT_HIGHLIGHTER_THEME;
 	let languages: Awaited<ReturnType<typeof getLanguages>> = [];
 	let lang = '';
@@ -198,6 +198,8 @@
 	type SectionSnapshot = {
 		appearance: {
 			selectedTheme: string;
+			customThemeActiveId: string | null;
+			customThemeDirty: boolean;
 			highlighterTheme: string;
 			lang: string;
 			backgroundImageUrl: string | null;
@@ -345,54 +347,34 @@
 	};
 
 	const applyTheme = (rawTheme: string) => {
-		const _theme = normalizeTheme(rawTheme);
-		let themeToApply = _theme;
-
-		if (_theme === 'system') {
-			themeToApply = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
-		}
-
-		if (themeToApply === 'dark') {
-			document.documentElement.style.setProperty('--color-gray-800', '#333');
-			document.documentElement.style.setProperty('--color-gray-850', '#262626');
-			document.documentElement.style.setProperty('--color-gray-900', '#171717');
-			document.documentElement.style.setProperty('--color-gray-950', '#0d0d0d');
-		}
-
-		themes
-			.filter((e) => e !== themeToApply)
-			.forEach((e) => {
-				e.split(' ').forEach((e) => {
-					document.documentElement.classList.remove(e);
-				});
-			});
-
-		themeToApply.split(' ').forEach((e) => {
-			document.documentElement.classList.add(e);
-		});
-
-		const metaThemeColor = document.querySelector('meta[name="theme-color"]');
-		if (metaThemeColor) {
-			if (_theme === 'system') {
-				const systemTheme = window.matchMedia('(prefers-color-scheme: dark)').matches
-					? 'dark'
-					: 'light';
-				metaThemeColor.setAttribute('content', systemTheme === 'light' ? '#ffffff' : '#171717');
-			} else {
-				metaThemeColor.setAttribute('content', _theme === 'dark' ? '#171717' : '#ffffff');
-			}
-		}
-
-		if (typeof window !== 'undefined' && window.applyTheme) {
-			window.applyTheme();
-		}
+		applyBuiltinTheme(rawTheme);
 	};
 
 	const commitThemeSelection = (rawTheme: string) => {
 		const nextTheme = normalizeTheme(rawTheme);
 		selectedTheme = nextTheme;
+		customThemeActiveId = null;
 		theme.set(nextTheme);
 		applyTheme(nextTheme);
+	};
+
+	const handleBuiltinThemeSelection = (rawTheme: string) => {
+		customThemeManager?.clearActive?.();
+		commitThemeSelection(rawTheme);
+	};
+
+	const handleCustomThemeActiveChange = (
+		event: CustomEvent<{
+			activeThemeId: string | null;
+			colorMode?: 'light' | 'dark' | 'system';
+			theme?: CustomTheme;
+		}>
+	) => {
+		customThemeActiveId = event.detail.activeThemeId;
+		if (event.detail.colorMode) {
+			selectedTheme = normalizeTheme(event.detail.colorMode);
+			theme.set(selectedTheme);
+		}
 	};
 
 	const commitLanguageSelection = async (nextLang: string) => {
@@ -528,6 +510,8 @@
 	const buildSectionSnapshot = (): SectionSnapshot => ({
 		appearance: {
 			selectedTheme: normalizeTheme(selectedTheme),
+			customThemeActiveId,
+			customThemeDirty,
 			highlighterTheme: normalizeHighlighterTheme(highlighterTheme),
 			lang,
 			backgroundImageUrl,
@@ -605,6 +589,8 @@
 
 	const applyAppearanceSnapshot = (snapshot: SectionSnapshot['appearance']) => {
 		selectedTheme = normalizeTheme(snapshot.selectedTheme);
+		customThemeActiveId = snapshot.customThemeActiveId;
+		customThemeDirty = snapshot.customThemeDirty;
 		highlighterTheme = normalizeHighlighterTheme(snapshot.highlighterTheme);
 		lang = snapshot.lang;
 		backgroundImageUrl = snapshot.backgroundImageUrl;
@@ -685,6 +671,8 @@
 
 	$: {
 		selectedTheme;
+		customThemeActiveId;
+		customThemeDirty;
 		highlighterTheme;
 		lang;
 		backgroundImageUrl;
@@ -912,16 +900,23 @@
 
 		appearanceSaving = true;
 		try {
+			await customThemeManager?.save?.();
 			await saveSettings({
 				backgroundImageUrl,
 				highlighterTheme: normalizeHighlighterTheme(highlighterTheme),
 				mermaidTheme: normalizeMermaidTheme(mermaidTheme),
 				textScale,
 				transitionMode,
-				enableAutoScrollOnStreaming
+				enableAutoScrollOnStreaming,
+				customTheme: customThemeActiveId ? { activeId: customThemeActiveId } : null
 			});
-			localStorage.setItem('theme', normalizeTheme(selectedTheme));
-			commitThemeSelection(selectedTheme);
+			if (customThemeActiveId) {
+				localStorage.setItem(CUSTOM_THEME_ACTIVE_ID_KEY, customThemeActiveId);
+				theme.set(normalizeTheme(selectedTheme));
+			} else {
+				localStorage.setItem('theme', normalizeTheme(selectedTheme));
+				commitThemeSelection(selectedTheme);
+			}
 			await commitLanguageSelection(lang);
 			commitTextScaleSelection(textScale);
 			await tick();
@@ -1078,6 +1073,7 @@
 	const resetAppearanceChanges = () => {
 		if (!initialSectionSnapshot) return;
 		applyAppearanceSnapshot(cloneSettingsSnapshot(initialSectionSnapshot.appearance));
+		void customThemeManager?.reset?.();
 	};
 
 	const resetLayoutChanges = () => {
@@ -1159,6 +1155,9 @@
 
 		// Appearance
 		selectedTheme = normalizeTheme(localStorage.theme);
+		customThemeActiveId =
+			($settings?.customTheme?.activeId as string | undefined) ??
+			localStorage.getItem(CUSTOM_THEME_ACTIVE_ID_KEY);
 		if (localStorage.theme !== selectedTheme) {
 			localStorage.theme = selectedTheme;
 			applyTheme(selectedTheme);
@@ -1400,8 +1399,16 @@
 									<div class="space-y-2">
 										<div class="glass-item p-4">
 											<div class="text-sm font-medium mb-2">{$i18n.t('Theme')}</div>
-											<ThemeSelector bind:value={selectedTheme} />
+											<ThemeSelector bind:value={selectedTheme} onChange={handleBuiltinThemeSelection} />
 										</div>
+										<CustomThemeManager
+											bind:this={customThemeManager}
+											bind:activeThemeId={customThemeActiveId}
+											on:activeThemeChange={handleCustomThemeActiveChange}
+											on:dirtyChange={(event) => {
+												customThemeDirty = !!event.detail?.value;
+											}}
+										/>
 										<div class="glass-item p-4 space-y-4">
 											<div
 												class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"

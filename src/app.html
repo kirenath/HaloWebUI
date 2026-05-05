@@ -102,6 +102,35 @@
 					metaThemeColorTag?.setAttribute('content', '#171717');
 				}
 
+				try {
+					const cachedCustomTheme = JSON.parse(
+						localStorage.getItem('halo.customTheme.cache') || 'null'
+					);
+					const cssVariables = cachedCustomTheme?.cssVariables;
+					const theme = cachedCustomTheme?.theme;
+
+					if (cssVariables && typeof cssVariables === 'object') {
+						for (const [name, value] of Object.entries(cssVariables)) {
+							if (typeof name === 'string' && typeof value === 'string') {
+								document.documentElement.style.setProperty(name, value);
+							}
+						}
+					}
+
+					if (theme?.customCss) {
+						const style = document.createElement('style');
+						style.id = 'halo-custom-theme-css';
+						style.textContent = String(theme.customCss);
+						document.head.appendChild(style);
+					}
+
+					if (theme?.tokens?.background) {
+						metaThemeColorTag?.setAttribute('content', String(theme.tokens.background));
+					}
+				} catch (_) {
+					// Ignore invalid theme cache. The app will resync from the backend after login.
+				}
+
 				const media = window.matchMedia('(prefers-color-scheme: dark)');
 				const onSystemThemeChange = (e) => {
 					if (localStorage.theme !== 'system') return;

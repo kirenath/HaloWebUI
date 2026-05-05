@@ -240,6 +240,9 @@ type Settings = {
 	hapticFeedback?: boolean;
 	textScale?: number | null;
 	highlighterTheme?: string;
+	customTheme?: {
+		activeId?: string | null;
+	} | null;
 	enableMessageQueue?: boolean;
 	mermaidTheme?: string;
 	temporaryChatByDefault?: boolean;

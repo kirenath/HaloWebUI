@@ -87,6 +87,7 @@ from open_webui.routers import (
     scim,
     skills,
     terminal,
+    themes,
     tools,
     users,
     utils,
@@ -1380,6 +1381,7 @@ app.include_router(functions.router, prefix="/api/v1/functions", tags=["function
 app.include_router(skills.router, prefix="/api/v1/skills", tags=["skills"])
 app.include_router(analytics.router, prefix="/api/v1/analytics", tags=["analytics"])
 app.include_router(terminal.router, prefix="/api/v1/terminal", tags=["terminal"])
+app.include_router(themes.router, prefix="/api/v1/themes", tags=["themes"])
 app.include_router(utils.router, prefix="/api/v1/utils", tags=["utils"])
 
 app.include_router(haloclaw_router, prefix="/api/v1/haloclaw", tags=["haloclaw"])
