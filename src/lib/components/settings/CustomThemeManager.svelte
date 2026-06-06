@@ -108,6 +108,19 @@
 		savedDraftJson = '';
 	};
 
+	const addFontFace = () => {
+		draft.tokens = {
+			...draft.tokens,
+			fontFaces: [...(draft.tokens.fontFaces ?? []), { family: '', src: '', weight: '', style: 'normal' }]
+		};
+	};
+
+	const removeFontFace = (index: number) => {
+		const faces = [...(draft.tokens.fontFaces ?? [])];
+		faces.splice(index, 1);
+		draft.tokens = { ...draft.tokens, fontFaces: faces };
+	};
+
 	export const save = async () => {
 		if (saving) return activeThemeId;
 		if (!dirty) return activeThemeId;
@@ -373,6 +386,98 @@
 				</div>
 			</label>
 		{/each}
+	</div>
+
+	<div class="space-y-3 rounded-2xl border border-gray-200/70 p-4 dark:border-gray-700/60">
+		<div class="space-y-1">
+			<div class="text-sm font-medium">{$i18n.t('Fonts')}</div>
+			<div class="text-xs text-gray-500 dark:text-gray-400">
+				{$i18n.t('Set font-family stacks for UI, headings, and code. Leave empty to use the default fonts.')}
+			</div>
+		</div>
+
+		<div class="grid gap-3 md:grid-cols-3">
+			<label class="space-y-1 text-xs font-medium text-gray-600 dark:text-gray-300">
+				<span>{$i18n.t('Body Font')}</span>
+				<input
+					bind:value={draft.tokens.fontBody}
+					placeholder="'Inter', system-ui, sans-serif"
+					class="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-800 outline-none dark:border-gray-700 dark:bg-gray-850 dark:text-gray-100"
+				/>
+			</label>
+			<label class="space-y-1 text-xs font-medium text-gray-600 dark:text-gray-300">
+				<span>{$i18n.t('Heading Font')}</span>
+				<input
+					bind:value={draft.tokens.fontHeading}
+					placeholder="'Space Grotesk', sans-serif"
+					class="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-800 outline-none dark:border-gray-700 dark:bg-gray-850 dark:text-gray-100"
+				/>
+			</label>
+			<label class="space-y-1 text-xs font-medium text-gray-600 dark:text-gray-300">
+				<span>{$i18n.t('Code Font')}</span>
+				<input
+					bind:value={draft.tokens.fontMono}
+					placeholder="'JetBrains Mono', monospace"
+					class="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-800 outline-none dark:border-gray-700 dark:bg-gray-850 dark:text-gray-100"
+				/>
+			</label>
+		</div>
+
+		<label class="space-y-1 text-xs font-medium text-gray-600 dark:text-gray-300">
+			<span>{$i18n.t('Font Stylesheet URL (@import)')}</span>
+			<input
+				bind:value={draft.tokens.fontImportUrl}
+				placeholder="https://fonts.googleapis.com/css2?family=Inter&display=swap"
+				class="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-800 outline-none dark:border-gray-700 dark:bg-gray-850 dark:text-gray-100"
+			/>
+			<span class="block text-xs font-normal text-gray-400 dark:text-gray-500">
+				{$i18n.t('For hosted CSS font stylesheets such as Google Fonts. Must be https.')}
+			</span>
+		</label>
+
+		<div class="space-y-2">
+			<div class="flex items-center justify-between gap-2">
+				<div class="text-xs font-medium text-gray-600 dark:text-gray-300">
+					{$i18n.t('Custom Font Files (@font-face)')}
+				</div>
+				<button
+					type="button"
+					class="rounded-lg border border-gray-200 bg-white px-2.5 py-1.5 text-xs font-medium text-gray-700 transition hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200 dark:hover:bg-gray-800"
+					on:click={addFontFace}
+				>
+					{$i18n.t('Add Font')}
+				</button>
+			</div>
+			<div class="text-xs text-gray-400 dark:text-gray-500">
+				{$i18n.t('Direct https links to .woff2/.woff/.ttf/.otf files (e.g. a Cloudflare R2 bucket). The font host must allow CORS.')}
+			</div>
+			{#each draft.tokens.fontFaces ?? [] as face, index (index)}
+				<div class="grid gap-2 rounded-xl border border-gray-200/70 p-2 dark:border-gray-700/60 md:grid-cols-[minmax(0,1fr)_minmax(0,2fr)_5rem_auto]">
+					<input
+						bind:value={face.family}
+						placeholder={$i18n.t('Family name')}
+						class="min-w-0 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-800 outline-none dark:border-gray-700 dark:bg-gray-850 dark:text-gray-100"
+					/>
+					<input
+						bind:value={face.src}
+						placeholder="https://cdn.example.com/font.woff2"
+						class="min-w-0 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-800 outline-none dark:border-gray-700 dark:bg-gray-850 dark:text-gray-100"
+					/>
+					<input
+						bind:value={face.weight}
+						placeholder="400"
+						class="min-w-0 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-800 outline-none dark:border-gray-700 dark:bg-gray-850 dark:text-gray-100"
+					/>
+					<button
+						type="button"
+						class="rounded-lg border border-rose-200 bg-white px-2.5 py-1.5 text-xs font-medium text-rose-600 transition hover:bg-rose-50 dark:border-rose-900/60 dark:bg-gray-900 dark:text-rose-300 dark:hover:bg-rose-950/30"
+						on:click={() => removeFontFace(index)}
+					>
+						{$i18n.t('Remove')}
+					</button>
+				</div>
+			{/each}
+		</div>
 	</div>
 
 	<div class="rounded-2xl border border-gray-200/70 p-4 dark:border-gray-700/60" style={`background: ${draft.tokens.background}; color: ${draft.tokens.foreground}; border-radius: ${draft.tokens.radius};`}>

@@ -2,6 +2,13 @@ export const BUILTIN_THEMES = ['light', 'dark', 'system'] as const;
 export type BuiltinTheme = (typeof BUILTIN_THEMES)[number];
 export type ThemeColorMode = BuiltinTheme;
 
+export type ThemeFontFace = {
+	family: string;
+	src: string;
+	weight?: string;
+	style?: string;
+};
+
 export type CustomThemeTokens = {
 	primary: string;
 	background: string;
@@ -9,6 +16,11 @@ export type CustomThemeTokens = {
 	surface: string;
 	radius: string;
 	glassOpacity: number;
+	fontBody?: string;
+	fontHeading?: string;
+	fontMono?: string;
+	fontImportUrl?: string;
+	fontFaces?: ThemeFontFace[];
 };
 
 export type CustomTheme = {
@@ -34,11 +46,65 @@ declare global {
 export const CUSTOM_THEME_CACHE_KEY = 'halo.customTheme.cache';
 export const CUSTOM_THEME_ACTIVE_ID_KEY = 'halo.customTheme.activeId';
 export const CUSTOM_THEME_STYLE_ID = 'halo-custom-theme-css';
+export const CUSTOM_THEME_FONT_STYLE_ID = 'halo-custom-theme-fonts';
 
 const THEME_ID_RE = /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$/;
 const HEX_COLOR_RE = /^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/;
 const RADIUS_RE = /^\d+(\.\d+)?(px|rem|em|%)$/;
 const MAX_CUSTOM_CSS_LENGTH = 20_000;
+const MAX_FONT_FAMILY_LENGTH = 200;
+const MAX_FONT_URL_LENGTH = 500;
+const MAX_FONT_FACES = 12;
+const FONT_URL_RE = /^https:\/\/[^\s"'()<>{};\\]+$/;
+const FONT_WEIGHT_RE = /^[0-9]{2,3}(\s+[0-9]{2,3})?$/;
+const FONT_STYLES = new Set(['normal', 'italic', 'oblique']);
+
+// font-family stacks can contain quotes, commas and spaces, but must never be able
+// to break out of the CSS declaration they are injected into.
+const sanitizeFontFamily = (value: unknown): string => {
+	if (typeof value !== 'string') return '';
+	return value
+		.replace(/[;{}<>:\\]/g, '')
+		.replace(/\s+/g, ' ')
+		.trim()
+		.slice(0, MAX_FONT_FAMILY_LENGTH);
+};
+
+// Only allow plain https URLs with no characters that could terminate the url() / rule.
+const sanitizeFontUrl = (value: unknown): string => {
+	if (typeof value !== 'string') return '';
+	const trimmed = value.trim().slice(0, MAX_FONT_URL_LENGTH);
+	return FONT_URL_RE.test(trimmed) ? trimmed : '';
+};
+
+const guessFontFormat = (url: string): string => {
+	const match = url.toLowerCase().match(/\.(woff2|woff|otf|ttf)(?:[?#].*)?$/);
+	if (!match) return '';
+	return { woff2: 'woff2', woff: 'woff', otf: 'opentype', ttf: 'truetype' }[match[1]] ?? '';
+};
+
+const sanitizeFontFace = (value: unknown): ThemeFontFace | null => {
+	if (!value || typeof value !== 'object') return null;
+	const raw = value as Partial<ThemeFontFace>;
+	const family = sanitizeFontFamily(raw.family).replace(/['"]/g, '');
+	const src = sanitizeFontUrl(raw.src);
+	if (!family || !src) return null;
+
+	const face: ThemeFontFace = { family, src };
+	const weight = typeof raw.weight === 'string' ? raw.weight.trim() : '';
+	if (FONT_WEIGHT_RE.test(weight)) face.weight = weight;
+	const style = typeof raw.style === 'string' ? raw.style.trim().toLowerCase() : '';
+	if (FONT_STYLES.has(style)) face.style = style;
+	return face;
+};
+
+const sanitizeFontFaces = (value: unknown): ThemeFontFace[] => {
+	if (!Array.isArray(value)) return [];
+	return value
+		.slice(0, MAX_FONT_FACES)
+		.map(sanitizeFontFace)
+		.filter((face): face is ThemeFontFace => face !== null);
+};
 
 const LEGACY_THEME_MAP: Record<string, BuiltinTheme> = {
 	'oled-dark': 'dark',
@@ -69,6 +135,9 @@ const CUSTOM_THEME_VARIABLES = [
 	'--halo-theme-surface',
 	'--halo-theme-radius',
 	'--halo-theme-glass-opacity',
+	'--halo-theme-font-body',
+	'--halo-theme-font-heading',
+	'--halo-theme-font-mono',
 	'--glass-shadow',
 	'--color-surface-glass',
 	'--color-surface-glass-dark',
@@ -183,6 +252,17 @@ export const normalizeCustomTheme = (rawTheme: unknown): CustomTheme => {
 		glassOpacity: clamp(Number(tokens.glassOpacity ?? DEFAULT_THEME.tokens.glassOpacity), 0, 1)
 	};
 
+	const fontBody = sanitizeFontFamily(tokens.fontBody);
+	const fontHeading = sanitizeFontFamily(tokens.fontHeading);
+	const fontMono = sanitizeFontFamily(tokens.fontMono);
+	const fontImportUrl = sanitizeFontUrl(tokens.fontImportUrl);
+	const fontFaces = sanitizeFontFaces(tokens.fontFaces);
+	if (fontBody) normalizedTokens.fontBody = fontBody;
+	if (fontHeading) normalizedTokens.fontHeading = fontHeading;
+	if (fontMono) normalizedTokens.fontMono = fontMono;
+	if (fontImportUrl) normalizedTokens.fontImportUrl = fontImportUrl;
+	if (fontFaces.length) normalizedTokens.fontFaces = fontFaces;
+
 	assertValidHexColor(normalizedTokens.primary, 'Primary color');
 	assertValidHexColor(normalizedTokens.background, 'Background color');
 	assertValidHexColor(normalizedTokens.foreground, 'Foreground color');
@@ -243,8 +323,13 @@ export const getThemeCssVariables = (themeInput: unknown): Record<string, string
 	const theme = normalizeCustomTheme(themeInput);
 	const primary = theme.tokens.primary;
 	const gray = getGrayScale(theme);
+	const fontVariables: Record<string, string> = {};
+	if (theme.tokens.fontBody) fontVariables['--halo-theme-font-body'] = theme.tokens.fontBody;
+	if (theme.tokens.fontHeading) fontVariables['--halo-theme-font-heading'] = theme.tokens.fontHeading;
+	if (theme.tokens.fontMono) fontVariables['--halo-theme-font-mono'] = theme.tokens.fontMono;
 
 	return {
+		...fontVariables,
 		'--halo-theme-background': theme.tokens.background,
 		'--halo-theme-foreground': theme.tokens.foreground,
 		'--halo-theme-surface': theme.tokens.surface,
@@ -265,6 +350,33 @@ export const getThemeCssVariables = (themeInput: unknown): Record<string, string
 		'--color-primary-900': mixHex(primary, '#000000', 0.55),
 		...Object.fromEntries(Object.entries(gray).map(([step, color]) => [`--color-gray-${step}`, color]))
 	};
+};
+
+// Builds the CSS that loads custom fonts. Injected into a dedicated <style> element so a
+// theme's own customCss @import is never invalidated by font @font-face ordering rules.
+// Within this stylesheet @import must precede every other rule, so it is emitted first.
+export const buildFontPreludeCss = (themeInput: unknown): string => {
+	const theme = normalizeCustomTheme(themeInput);
+	const blocks: string[] = [];
+
+	if (theme.tokens.fontImportUrl) {
+		blocks.push(`@import url("${theme.tokens.fontImportUrl}");`);
+	}
+
+	for (const face of theme.tokens.fontFaces ?? []) {
+		const format = guessFontFormat(face.src);
+		const src = format ? `url("${face.src}") format("${format}")` : `url("${face.src}")`;
+		const lines = [
+			`\tfont-family: "${face.family}";`,
+			`\tsrc: ${src};`,
+			`\tfont-weight: ${face.weight ?? '400'};`,
+			`\tfont-style: ${face.style ?? 'normal'};`,
+			`\tfont-display: swap;`
+		];
+		blocks.push(`@font-face {\n${lines.join('\n')}\n}`);
+	}
+
+	return blocks.join('\n');
 };
 
 export const getEffectiveColorMode = (colorMode: ThemeColorMode): 'light' | 'dark' => {
@@ -294,16 +406,19 @@ const applyThemeClass = (colorMode: ThemeColorMode) => {
 	return effectiveMode;
 };
 
-const ensureCustomStyleElement = () => {
+const ensureStyleElement = (elementId: string) => {
 	if (typeof document === 'undefined') return null;
-	let style = document.getElementById(CUSTOM_THEME_STYLE_ID) as HTMLStyleElement | null;
+	let style = document.getElementById(elementId) as HTMLStyleElement | null;
 	if (!style) {
 		style = document.createElement('style');
-		style.id = CUSTOM_THEME_STYLE_ID;
+		style.id = elementId;
 		document.head.appendChild(style);
 	}
 	return style;
 };
+
+const ensureCustomStyleElement = () => ensureStyleElement(CUSTOM_THEME_STYLE_ID);
+const ensureFontStyleElement = () => ensureStyleElement(CUSTOM_THEME_FONT_STYLE_ID);
 
 const persistCustomThemeCache = (theme: CustomTheme, cssVariables: Record<string, string>) => {
 	if (typeof localStorage === 'undefined') return;
@@ -319,6 +434,7 @@ export const clearCustomTheme = (options: { persist?: boolean } = {}) => {
 			document.documentElement.style.removeProperty(variableName);
 		}
 		document.getElementById(CUSTOM_THEME_STYLE_ID)?.remove();
+		document.getElementById(CUSTOM_THEME_FONT_STYLE_ID)?.remove();
 	}
 
 	if (options.persist !== false && typeof localStorage !== 'undefined') {
@@ -355,6 +471,10 @@ export const applyCustomTheme = (
 	if (typeof document !== 'undefined') {
 		for (const [name, value] of Object.entries(cssVariables)) {
 			document.documentElement.style.setProperty(name, value);
+		}
+		const fontStyle = ensureFontStyleElement();
+		if (fontStyle) {
+			fontStyle.textContent = buildFontPreludeCss(theme);
 		}
 		const style = ensureCustomStyleElement();
 		if (style) {

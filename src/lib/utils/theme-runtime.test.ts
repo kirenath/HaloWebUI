@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+	buildFontPreludeCss,
 	createDefaultCustomTheme,
 	getThemeCssVariables,
 	normalizeCustomTheme,
@@ -69,5 +70,82 @@ describe('theme-runtime', () => {
 	it('creates safe ids from arbitrary labels', () => {
 		expect(normalizeThemeId('  Halo Blue Theme  ')).toBe('halo-blue-theme');
 		expect(normalizeThemeId('***')).toBe('my-theme');
+	});
+
+	it('carries and sanitizes font tokens', () => {
+		const theme = normalizeCustomTheme({
+			...createDefaultCustomTheme(),
+			tokens: {
+				...createDefaultCustomTheme().tokens,
+				fontBody: "  'Inter', system-ui  ",
+				fontHeading: "'Space Grotesk'; } body { display: none",
+				fontMono: 'JetBrains Mono',
+				fontImportUrl: 'https://fonts.googleapis.com/css2?family=Inter&display=swap',
+				fontFaces: [
+					{ family: 'My R2 Font', src: 'https://cdn.example.com/font.woff2', weight: '500' },
+					{ family: 'Bad', src: 'javascript:alert(1)' },
+					{ family: 'NoSrc' }
+				]
+			}
+		});
+
+		expect(theme.tokens.fontBody).toBe("'Inter', system-ui");
+		// dangerous characters that could break out of the declaration are stripped
+		expect(theme.tokens.fontHeading).toBe("'Space Grotesk' body display none");
+		expect(theme.tokens.fontImportUrl).toContain('fonts.googleapis.com');
+		// only the valid https font file survives
+		expect(theme.tokens.fontFaces).toHaveLength(1);
+		expect(theme.tokens.fontFaces?.[0]).toMatchObject({
+			family: 'My R2 Font',
+			src: 'https://cdn.example.com/font.woff2',
+			weight: '500'
+		});
+	});
+
+	it('drops non-https font urls', () => {
+		const theme = normalizeCustomTheme({
+			...createDefaultCustomTheme(),
+			tokens: {
+				...createDefaultCustomTheme().tokens,
+				fontImportUrl: 'http://insecure.example.com/font.css'
+			}
+		});
+		expect(theme.tokens.fontImportUrl).toBeUndefined();
+	});
+
+	it('derives font CSS variables only when set', () => {
+		const withFont = getThemeCssVariables(
+			normalizeCustomTheme({
+				...createDefaultCustomTheme(),
+				tokens: { ...createDefaultCustomTheme().tokens, fontBody: "'Inter', sans-serif" }
+			})
+		);
+		expect(withFont['--halo-theme-font-body']).toBe("'Inter', sans-serif");
+
+		const withoutFont = getThemeCssVariables(createDefaultCustomTheme());
+		expect(withoutFont['--halo-theme-font-body']).toBeUndefined();
+	});
+
+	it('builds a font prelude with @import first and @font-face blocks', () => {
+		const css = buildFontPreludeCss(
+			normalizeCustomTheme({
+				...createDefaultCustomTheme(),
+				tokens: {
+					...createDefaultCustomTheme().tokens,
+					fontImportUrl: 'https://fonts.googleapis.com/css2?family=Inter&display=swap',
+					fontFaces: [{ family: 'My R2 Font', src: 'https://cdn.example.com/font.ttf', weight: '400' }]
+				}
+			})
+		);
+
+		expect(css.indexOf('@import')).toBe(0);
+		expect(css.indexOf('@import')).toBeLessThan(css.indexOf('@font-face'));
+		expect(css).toContain('font-family: "My R2 Font"');
+		expect(css).toContain('format("truetype")');
+		expect(css).toContain('font-display: swap;');
+	});
+
+	it('returns an empty prelude when no fonts are configured', () => {
+		expect(buildFontPreludeCss(createDefaultCustomTheme())).toBe('');
 	});
 });

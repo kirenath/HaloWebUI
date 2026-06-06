@@ -137,7 +137,18 @@ body {
 	@apply bg-gray-50 dark:bg-[#0a0a0f] text-gray-900 dark:text-gray-100 antialiased selection:bg-primary-500/20 selection:text-primary-600;
 	background: var(--halo-theme-background);
 	color: var(--halo-theme-foreground);
+	font-family: var(--halo-theme-font-body, inherit);
 	/* Subtle pattern or texture could go here */
+}
+
+/* Custom-theme heading font (falls back to inherited/body font when unset) */
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+	font-family: var(--halo-theme-font-heading, inherit);
 }
 
 /* Glassmorphism Utilities */
@@ -434,12 +445,12 @@ kbd,
 samp,
 .cm-editor,
 .hljs {
-	font-family: var(--font-mono);
+	font-family: var(--halo-theme-font-mono, var(--font-mono));
 	font-variant-ligatures: none;
 }
 
 .font-mono {
-	font-family: var(--font-mono);
+	font-family: var(--halo-theme-font-mono, var(--font-mono));
 }
 
 .cm-editor,
@@ -448,7 +459,7 @@ samp,
 .cm-editor .cm-line,
 .cm-editor .cm-gutters,
 .cm-editor .cm-gutterElement {
-	font-family: var(--font-mono) !important;
+	font-family: var(--halo-theme-font-mono, var(--font-mono)) !important;
 	font-variant-ligatures: none;
 }
 
